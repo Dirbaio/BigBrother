@@ -30,7 +30,7 @@ func NewRecorder(camera *Camera) *Recorder {
 }
 
 func (this *Recorder) getPath() string {
-	return fmt.Sprintf("%s/%d/%d", rootPath, this.camera.ID, this.periodId)
+	return fmt.Sprintf("%s/%d/%d", storagePath, this.camera.ID, this.periodId)
 }
 
 func (this *Recorder) getMpdPath() string {

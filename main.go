@@ -15,7 +15,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var rootPath = os.Getenv("BB_STORAGE_PATH")
+var storagePath = os.Getenv("BB_STORAGE_PATH")
 
 var db *sqlx.DB
 
@@ -157,6 +157,7 @@ func main() {
 	}
 
 	fs := http.FileServer(http.Dir("static"))
+	http.Handle("/stream/", http.StripPrefix("/stream/", http.FileServer(http.Dir(storagePath))))
 	http.HandleFunc("/mpd", genMpd)
 	http.Handle("/", fs)
 

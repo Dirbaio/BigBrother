@@ -45,7 +45,7 @@ case $task in
             -i -t --rm \
             --name $appname \
             --link $appname-postgres:postgres \
-            -p 0.0.0.0:8000:8000 \
+            -p 0.0.0.0:3000:3000 \
             -v $(pwd)/storage:/var/bigbrother:rw \
             -e BB_POSTGRES_HOST=postgres \
             -e BB_POSTGRES_PORT=5432 \
