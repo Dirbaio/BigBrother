@@ -1,6 +1,7 @@
 
 //var manifestUri = '/stream/1/6/stream.mpd';
-var manifestUri = '/mpd?cam=2';
+var cam = document.location.search.replace('?', '') || "1";
+var manifestUri = '/mpd?cam='+cam;
 
 function initApp() {
   // Install built-in polyfills to patch browser incompatibilities.
