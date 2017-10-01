@@ -1,16 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/Dirbaio/BigBrother/mpd"
+	. "github.com/Dirbaio/BigBrother/mpd/helpers/ptrs"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -20,9 +23,9 @@ var storagePath = os.Getenv("BB_STORAGE_PATH")
 var db *sqlx.DB
 
 type Camera struct {
-	ID     int    `db:"id"`
-	Name   string `db:"name"`
-	Source string `db:"source"`
+	ID     int    `db:"id" json:"id"`
+	Name   string `db:"name" json:"name"`
+	Source string `db:"source" json:"-"`
 }
 
 func (c *Camera) String() string {
@@ -68,7 +71,7 @@ func getCamera(id int) (*Camera, error) {
 func getCameras() ([]*Camera, error) {
 	var res []*Camera
 
-	err := db.Select(&res, "SELECT * FROM camera")
+	err := db.Select(&res, "SELECT * FROM camera ORDER BY id ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -76,15 +79,44 @@ func getCameras() ([]*Camera, error) {
 	return res, nil
 }
 
-func genMpd(rw http.ResponseWriter, req *http.Request) {
-	cam, err := strconv.Atoi(req.URL.Query().Get("cam"))
+func listCameras(rw http.ResponseWriter, req *http.Request) {
+	res, err := getCameras()
+	if err != nil {
+		panic(err)
+	}
 
-	m := mpd.NewMPD(mpd.DASH_PROFILE_ONDEMAND, "PT30S", "PT4S")
+	js, err := json.Marshal(res)
+	if err != nil {
+		panic(err)
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Write(js)
+
+}
+
+func getMpd(rw http.ResponseWriter, req *http.Request) {
+	cam, err := strconv.Atoi(req.URL.Query().Get("cam"))
+	if err != nil {
+		panic(err)
+	}
+	fromUnix, err := strconv.ParseInt(req.URL.Query().Get("from"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	toUnix, err := strconv.ParseInt(req.URL.Query().Get("to"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	from := time.Unix(fromUnix/1000, 0)
+	to := time.Unix(toUnix/1000, 0)
+
+	m := mpd.NewMPD(mpd.DASH_PROFILE_ONDEMAND, "PT1S")
 	m.MediaPresentationDuration = nil
 	m.Periods = []*mpd.Period{}
 
 	segments := []Segment{}
-	err = db.Select(&segments, "SELECT * FROM segment WHERE camera_id=$1 ORDER BY period_id, id", cam)
+	err = db.Select(&segments, "SELECT * FROM segment WHERE camera_id=$1 AND time BETWEEN $2 AND $3 ORDER BY period_id, id", cam, from, to)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,6 +142,18 @@ func genMpd(rw http.ResponseWriter, req *http.Request) {
 
 			p := m.AddNewPeriod()
 			p.SetDuration(time.Duration(duration * int64(1000000000) / int64(period.Timescale)))
+			p.EventStreams = []*mpd.EventStream{
+				&mpd.EventStream{
+					SchemeIDURI: Strptr("bigbrother:realtime"),
+					Value:       Strptr(period.Time.String()),
+					Events: []*mpd.Event{
+						&mpd.Event{
+							PresentationTime: Intptr(0),
+							Duration:         Intptr(1000000),
+						},
+					},
+				},
+			}
 			as, _ := p.AddNewAdaptationSetVideo(mpd.DASH_MIME_TYPE_VIDEO_MP4, "progressive", true, 1)
 			rep, _ := as.AddNewRepresentationVideo(1100690, period.Codecs, "0", period.FrameRate, int64(period.Width), int64(period.Height))
 			initUrl := fmt.Sprintf("/stream/%d/%d/init-stream0.m4s", period.CameraID, period.ID)
@@ -141,6 +185,18 @@ func genMpd(rw http.ResponseWriter, req *http.Request) {
 
 var recorders []*Recorder
 
+type indexWrapper struct {
+	assets http.FileSystem
+}
+
+func (i *indexWrapper) Open(name string) (http.File, error) {
+	ret, err := i.assets.Open(name)
+	if !os.IsNotExist(err) || path.Ext(name) != "" {
+		return ret, err
+	}
+	return i.assets.Open("index.html")
+}
+
 func main() {
 	var err error
 	db, err = sqlx.Connect("postgres", fmt.Sprintf(
@@ -156,13 +212,18 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	fs := http.FileServer(http.Dir("static"))
-	http.Handle("/stream/", http.StripPrefix("/stream/", http.FileServer(http.Dir(storagePath))))
-	http.HandleFunc("/mpd", genMpd)
-	http.Handle("/", fs)
+	fs := http.FileServer(&indexWrapper{http.Dir("static")})
+	mux := http.NewServeMux()
+	mux.Handle("/stream/", http.StripPrefix("/stream/", http.FileServer(http.Dir(storagePath))))
+	mux.HandleFunc("/mpd", getMpd)
+	mux.HandleFunc("/cameras", listCameras)
+	mux.Handle("/", fs)
 
 	log.Println("Listening...")
-	go http.ListenAndServe(":3000", nil)
+
+	var handler http.Handler = mux
+	//handler = cors.New(cors.Options{Debug: true}).Handler(handler)
+	go http.ListenAndServe(":3000", handler)
 
 	cams, err := getCameras()
 	if err != nil {

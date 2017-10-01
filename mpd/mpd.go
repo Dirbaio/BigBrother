@@ -79,6 +79,18 @@ type Period struct {
 	SegmentList     *SegmentList     `xml:"SegmentList,omitempty"`
 	SegmentTemplate *SegmentTemplate `xml:"SegmentTemplate,omitempty"`
 	AdaptationSets  []*AdaptationSet `xml:"AdaptationSet,omitempty"`
+	EventStreams    []*EventStream   `xml:"EventStream,omitempty"`
+}
+type EventStream struct {
+	SchemeIDURI *string  `xml:"schemeIdUri,attr"`
+	Value       *string  `xml:"value,attr"`
+	Events      []*Event `xml:"Event,omitempty"`
+}
+
+type Event struct {
+	ID               *string `xml:"id,attr"`
+	PresentationTime *int    `xml:"presentationTime,attr"`
+	Duration         *int    `xml:"duration,attr"`
 }
 
 type AdaptationSet struct {
@@ -184,16 +196,15 @@ type AudioChannelConfiguration struct {
 // profile - DASH Profile (Live or OnDemand).
 // mediaPresentationDuration - Media Presentation Duration (i.e. PT6M16S).
 // minBufferTime - Min Buffer Time (i.e. PT1.97S).
-func NewMPD(profile DashProfile, mediaPresentationDuration string, minBufferTime string) *MPD {
+func NewMPD(profile DashProfile, minBufferTime string) *MPD {
 	period := &Period{}
 	return &MPD{
-		XMLNs:    Strptr("urn:mpeg:dash:schema:mpd:2011"),
-		Profiles: Strptr((string)(profile)),
-		Type:     Strptr("static"),
-		MediaPresentationDuration: Strptr(mediaPresentationDuration),
-		MinBufferTime:             Strptr(minBufferTime),
-		period:                    period,
-		Periods:                   []*Period{period},
+		XMLNs:         Strptr("urn:mpeg:dash:schema:mpd:2011"),
+		Profiles:      Strptr((string)(profile)),
+		Type:          Strptr("static"),
+		MinBufferTime: Strptr(minBufferTime),
+		period:        period,
+		Periods:       []*Period{period},
 	}
 }
 

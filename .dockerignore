@@ -1,4 +1,7 @@
-storage
+.git/
+storage/
 README.md
 TODO.md
 d
+frontend/node_modules
+frontend/dist
