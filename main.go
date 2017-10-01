@@ -140,12 +140,13 @@ func getMpd(rw http.ResponseWriter, req *http.Request) {
 				duration += segments[j].Length
 			}
 
+			pt := period.Time.Add(time.Duration(segment.Offset * int64(1000000000) / int64(period.Timescale)))
 			p := m.AddNewPeriod()
 			p.SetDuration(time.Duration(duration * int64(1000000000) / int64(period.Timescale)))
 			p.EventStreams = []*mpd.EventStream{
 				&mpd.EventStream{
 					SchemeIDURI: Strptr("bigbrother:realtime"),
-					Value:       Strptr(period.Time.String()),
+					Value:       Strptr(pt.String()),
 					Events: []*mpd.Event{
 						&mpd.Event{
 							PresentationTime: Intptr(0),
