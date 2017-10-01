@@ -139,7 +139,9 @@ export default {
     next()
   },
   mounted () {
-    fetch('/cameras').then((response) => {
+    fetch('/cameras', {
+      credentials: 'include'
+    }).then((response) => {
       return response.json()
     }).then((cams) => {
       this.cams = cams
