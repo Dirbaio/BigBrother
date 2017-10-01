@@ -52,9 +52,10 @@ type Segment struct {
 	CameraID int `db:"camera_id"`
 	PeriodID int `db:"period_id"`
 
-	Offset int64      `db:"off"`
-	Length int64      `db:"len"`
-	Time   *time.Time `db:"time"`
+	Index  int        `db:"index"` // Index of segment within the period. Starts with 1
+	Offset int64      `db:"off"`   // Offset of segment from the period start, in timescale units
+	Length int64      `db:"len"`   // Length of segment in timescale units
+	Time   *time.Time `db:"time"`  // Real time of the start of the segment
 }
 
 func getCamera(id int) (*Camera, error) {
@@ -108,8 +109,8 @@ func getMpd(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	from := time.Unix(fromUnix/1000, 0)
-	to := time.Unix(toUnix/1000, 0)
+	from := time.Unix(fromUnix/1000, 0).UTC()
+	to := time.Unix(toUnix/1000, 0).UTC()
 
 	m := mpd.NewMPD(mpd.DASH_PROFILE_ONDEMAND, "PT1S")
 	m.MediaPresentationDuration = nil
@@ -160,13 +161,15 @@ func getMpd(rw http.ResponseWriter, req *http.Request) {
 			initUrl := fmt.Sprintf("/stream/%d/%d/init-stream0.m4s", period.CameraID, period.ID)
 			mediaUrl := fmt.Sprintf("/stream/%d/%d/chunk-stream0-$Number%%05d$.m4s", period.CameraID, period.ID)
 			timescale := int64(period.Timescale)
-			startNumber := int64(1)
+			startNumber := int64(segment.Index)
+			pto := uint64(segment.Offset)
 			rep.SegmentTemplate = &mpd.SegmentTemplate{
-				Timescale:       &timescale,
-				Initialization:  &initUrl,
-				Media:           &mediaUrl,
-				SegmentTimeline: &mpd.SegmentTimeline{},
-				StartNumber:     &startNumber,
+				Timescale:              &timescale,
+				Initialization:         &initUrl,
+				Media:                  &mediaUrl,
+				SegmentTimeline:        &mpd.SegmentTimeline{},
+				StartNumber:            &startNumber,
+				PresentationTimeOffset: &pto,
 			}
 
 			stl = rep.SegmentTemplate.SegmentTimeline

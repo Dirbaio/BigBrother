@@ -19,6 +19,7 @@ type Recorder struct {
 	periodId         int
 	lastSegmentCount int
 	ffmpeg           *exec.Cmd
+	startTime        time.Time
 	done             chan struct{}
 }
 
@@ -67,10 +68,11 @@ func (this *Recorder) readMpd() {
 	for i, segment := range rep.SegmentTemplate.SegmentTimeline.Segments {
 		if i >= this.lastSegmentCount {
 			log.Printf("%v: New segment: %d\n", this.camera, i)
+			segmentTime := this.startTime.Add(time.Duration(int64(offset) * int64(1000000000) / int64(*rep.SegmentTemplate.Timescale)))
 			_, err = db.Exec(`
-				INSERT INTO segment (period_id, camera_id, off, len, time)
-			 	VALUES ($1, $2, $3, $4, $5)`,
-				this.periodId, this.camera.ID, offset, segment.Duration, time.Now())
+				INSERT INTO segment (period_id, camera_id, off, len, time, index)
+				VALUES ($1, $2, $3, $4, $5, $6)`,
+				this.periodId, this.camera.ID, offset, segment.Duration, segmentTime, i+1)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -170,7 +172,9 @@ func (this *Recorder) Stop() {
 func (this *Recorder) Run() {
 	log.Printf("%v: Starting", this.camera)
 
-	err := db.Get(&this.periodId, "INSERT INTO period (camera_id, time) VALUES($1, $2) RETURNING id", this.camera.ID, time.Now())
+	this.startTime = time.Now().UTC()
+
+	err := db.Get(&this.periodId, "INSERT INTO period (camera_id, time) VALUES($1, $2) RETURNING id", this.camera.ID, this.startTime)
 	if err != nil {
 		log.Fatal(err)
 	}
