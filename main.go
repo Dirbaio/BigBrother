@@ -236,6 +236,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	// Start all cams
 	for _, cam := range cams {
 		wg.Add(1)
 		r := NewRecorder(cam)
@@ -245,6 +246,16 @@ func main() {
 			wg.Done()
 		}()
 	}
+
+	// Start janitor
+	j := NewJanitor()
+	wg.Add(1)
+	go func() {
+		j.Run()
+		wg.Done()
+	}()
+
+	// Stop signal
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -254,6 +265,7 @@ func main() {
 			for _, r := range recorders {
 				r.Stop()
 			}
+			j.Stop()
 			// sig is a ^C, handle it
 		}
 	}()
